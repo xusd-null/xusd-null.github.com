@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+
+  <title><![CDATA[Category: test | 技术分享]]></title>
+  <link href="http://10.1.45.58/blog/categories/test/atom.xml" rel="self"/>
+  <link href="http://10.1.45.58/"/>
+  <updated>2014-06-05T21:01:06+08:00</updated>
+  <id>http://10.1.45.58/</id>
+  <author>
+    <name><![CDATA[]]></name>
+    <email><![CDATA[xyz_kankan@126.com]]></email>
+  </author>
+  <generator uri="http://octopress.org/">Octopress</generator>
+
+  
+  <entry>
+    <title type="html"><![CDATA[gtest源码剖析:1.实现一个超级简单的测试框架xtest]]></title>
+    <link href="http://10.1.45.58/blog/2014/06/05/gtestyuan-ma-pou-xi-1-dot-shi-xian-%5B%3F%5D-ge-chao-ji-jian-dan-de-ce-shi-kuang-jia/"/>
+    <updated>2014-06-05T20:46:00+08:00</updated>
+    <id>http://10.1.45.58/blog/2014/06/05/gtestyuan-ma-pou-xi-1-dot-shi-xian-[?]-ge-chao-ji-jian-dan-de-ce-shi-kuang-jia</id>
+    <content type="html"><![CDATA[<p>下面的代码模仿gtest实现，主要说明了以下两点:</p>
+
+<ol>
+<li><code>ASSERT_*</code> 和 <code>EXPECT_*</code>系列断言的原理和作用.</li>
+<li>gtest是怎样通过宏自动注册测试代码让其自动运行的.</li>
+</ol>
+
+
+<p>```cpp xtest.h</p>
+
+<h1>include <iostream></h1>
+
+<h1>include <string></h1>
+
+<h1>include <memory></h1>
+
+<h1>include <vector></h1>
+
+<h1>define ASSERT_EQ(a,b) if((a) != (b)) \</h1>
+
+<pre><code>{ \
+    std::cout&lt;&lt;"[     FAIL ] "&lt;&lt;#a&lt;&lt;" not equal "&lt;&lt;#b&lt;&lt;std::endl; \
+    return; \
+} else { \
+    std::cout&lt;&lt;"[       OK ] "&lt;&lt;std::endl; \
+}
+</code></pre>
+
+<h1>define ASSERT_NE(a,b) if((a) == (b)) \</h1>
+
+<pre><code>{ \
+    std::cout&lt;&lt;"[     FAIL ] "&lt;&lt;#a&lt;&lt;" not equal "&lt;&lt;#b&lt;&lt;std::endl; \
+    return; \
+} else { \
+    std::cout&lt;&lt;"[       OK ] "&lt;&lt;std::endl; \
+}
+</code></pre>
+
+<h1>define EXPECT_EQ(a,b) if((a) != (b)) \</h1>
+
+<pre><code>{ \
+    std::cout&lt;&lt;"[     FAIL ] "&lt;&lt;#a&lt;&lt;" not equal "&lt;&lt;#b&lt;&lt;std::endl; \
+} else { \
+    std::cout&lt;&lt;"[       OK ] "&lt;&lt;std::endl; \
+}
+</code></pre>
+
+<h1>define EXPECT_NE(a,b) if((a) == (b)) \</h1>
+
+<pre><code>{ \
+    std::cout&lt;&lt;"[     FAIL ] "&lt;&lt;#a&lt;&lt;" not equal "&lt;&lt;#b&lt;&lt;std::endl; \
+} else { \
+    std::cout&lt;&lt;"[       OK ] "&lt;&lt;std::endl; \
+}
+</code></pre>
+
+<h1>define MAKE_CLASS_NAME(test_case_name, test_name)  MAKI_CLASS_NAME_I(test_case_name, test_name)</h1>
+
+<h1>define MAKI_CLASS_NAME_I(test_case_name, test_name) XTest<em>##test_case_name##</em>##test_name##_Test</h1>
+
+<h1>define XTEST_TEST(test_case_name,test_name) class MAKE_CLASS_NAME(test_case_name, test_name): \</h1>
+
+<pre><code>public ::xtest::Test { \
+public: \
+    MAKE_CLASS_NAME(test_case_name, test_name)(): ::xtest::Test(#test_case_name, #test_name) \
+    { \
+        ::xtest::UnitTest::regist(std::shared_ptr&lt;::xtest::Test&gt;(this)); \
+    } \
+    virtual void testBody(); \
+    static MAKE_CLASS_NAME(test_case_name, test_name) * instance; \
+</code></pre>
+
+<p>}; \
+MAKE_CLASS_NAME(test_case_name, test_name) * MAKE_CLASS_NAME(test_case_name, test_name) ::instance \</p>
+
+<pre><code>= new MAKE_CLASS_NAME(test_case_name, test_name) ();\
+</code></pre>
+
+<p>void MAKE_CLASS_NAME(test_case_name, test_name)::testBody()</p>
+
+<h1>define TEST(test_case_name, test_name) XTEST_TEST(test_case_name, test_name)</h1>
+
+<p>namespace xtest {</p>
+
+<pre><code>class Test{
+    friend class UnitTest;
+public:
+    Test(const std::string &amp;n1, const std::string&amp; n2):test_case_name(n1), test_name(n2){
+    }
+    virtual void testBody() = 0;
+    std::string test_case_name;
+    std::string test_name;
+private:
+    Test(const Test&amp;) = delete;
+    Test&amp; operator=(const Test&amp;) = delete;
+};
+
+class UnitTest {
+public:
+    static UnitTest* getInstance();
+    void Run();
+    static void regist(std::shared_ptr&lt;Test&gt; const&amp; a);
+private:
+    static UnitTest* instance;
+    std::vector&lt;std::shared_ptr&lt;Test&gt;&gt; all_tests12;
+};
+</code></pre>
+
+<p>}</p>
+
+<p>inline void RUN_ALL_TESTS(){</p>
+
+<pre><code>xtest::UnitTest::getInstance()-&gt;Run();
+</code></pre>
+
+<p>}
+```</p>
+
+<p>```cpp xtest.cpp</p>
+
+<h1>include &ldquo;xtest.h&rdquo;</h1>
+
+<p>namespace xtest{</p>
+
+<pre><code>UnitTest* UnitTest::instance = NULL;
+UnitTest* UnitTest::getInstance(){
+    if(instance == NULL){
+        instance = new UnitTest();
+    }
+    return instance;
+}
+void UnitTest::Run(){
+    std::cout&lt;&lt;"[==========] Start XTest..."&lt;&lt;std::endl;
+    for(auto i = begin(all_tests12); i!= end(all_tests12); ++i){
+        std::cout&lt;&lt;"[ RUN      ] "&lt;&lt;(*i)-&gt;test_case_name&lt;&lt;"."&lt;&lt;(*i)-&gt;test_name&lt;&lt;std::endl;
+        (*i)-&gt;testBody();
+        std::cout&lt;&lt;std::endl;
+    }
+}
+void UnitTest::regist(std::shared_ptr&lt;Test&gt;const&amp; a){
+    getInstance()-&gt;all_tests12.push_back(a);
+}
+</code></pre>
+
+<p>}
+```</p>
+
+<p>```cpp main.cc</p>
+
+<h1>include &ldquo;xtest.h&rdquo;</h1>
+
+<p>TEST(t1,t2){</p>
+
+<pre><code>ASSERT_EQ(1,1);
+ASSERT_EQ(1,2);
+ASSERT_EQ(2,3);
+</code></pre>
+
+<p>}
+TEST(t3,t4){</p>
+
+<pre><code>EXPECT_EQ(1,1);
+EXPECT_EQ(1,2);
+EXPECT_EQ(2,3);
+</code></pre>
+
+<p>}
+int main(int argc, char* argv[]) {</p>
+
+<pre><code>RUN_ALL_TESTS();
+return 0;
+</code></pre>
+
+<p>}
+```</p>
+
+<p>```sh 结果
+[==========] Start XTest&hellip;
+[ RUN      ] t1.t2
+[       OK ]
+[     FAIL ] 1 not equal 2</p>
+
+<p>[ RUN      ] t3.t4
+[       OK ]
+[     FAIL ] 1 not equal 2
+[     FAIL ] 2 not equal 3</p>
+
+<p>```</p>
+]]></content>
+  </entry>
+  
+</feed>

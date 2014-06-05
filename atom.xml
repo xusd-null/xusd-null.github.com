@@ -4,7 +4,7 @@
   <title><![CDATA[技术分享]]></title>
   <link href="http://10.1.45.58/atom.xml" rel="self"/>
   <link href="http://10.1.45.58/"/>
-  <updated>2014-06-05T20:55:50+08:00</updated>
+  <updated>2014-06-05T21:01:06+08:00</updated>
   <id>http://10.1.45.58/</id>
   <author>
     <name><![CDATA[]]></name>
@@ -12,6 +12,480 @@
   </author>
   <generator uri="http://octopress.org/">Octopress</generator>
 
+  
+  <entry>
+    <title type="html"><![CDATA[gtest源码剖析:1.实现一个超级简单的测试框架xtest]]></title>
+    <link href="http://10.1.45.58/blog/2014/06/05/gtestyuan-ma-pou-xi-1-dot-shi-xian-%5B%3F%5D-ge-chao-ji-jian-dan-de-ce-shi-kuang-jia/"/>
+    <updated>2014-06-05T20:46:00+08:00</updated>
+    <id>http://10.1.45.58/blog/2014/06/05/gtestyuan-ma-pou-xi-1-dot-shi-xian-[?]-ge-chao-ji-jian-dan-de-ce-shi-kuang-jia</id>
+    <content type="html"><![CDATA[<p>下面的代码模仿gtest实现，主要说明了以下两点:</p>
+
+<ol>
+<li><code>ASSERT_*</code> 和 <code>EXPECT_*</code>系列断言的原理和作用.</li>
+<li>gtest是怎样通过宏自动注册测试代码让其自动运行的.</li>
+</ol>
+
+
+<figure class='code'><figcaption><span>xtest.h</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+<span class='line-number'>43</span>
+<span class='line-number'>44</span>
+<span class='line-number'>45</span>
+<span class='line-number'>46</span>
+<span class='line-number'>47</span>
+<span class='line-number'>48</span>
+<span class='line-number'>49</span>
+<span class='line-number'>50</span>
+<span class='line-number'>51</span>
+<span class='line-number'>52</span>
+<span class='line-number'>53</span>
+<span class='line-number'>54</span>
+<span class='line-number'>55</span>
+<span class='line-number'>56</span>
+<span class='line-number'>57</span>
+<span class='line-number'>58</span>
+<span class='line-number'>59</span>
+<span class='line-number'>60</span>
+<span class='line-number'>61</span>
+<span class='line-number'>62</span>
+<span class='line-number'>63</span>
+<span class='line-number'>64</span>
+<span class='line-number'>65</span>
+<span class='line-number'>66</span>
+<span class='line-number'>67</span>
+<span class='line-number'>68</span>
+<span class='line-number'>69</span>
+<span class='line-number'>70</span>
+<span class='line-number'>71</span>
+<span class='line-number'>72</span>
+<span class='line-number'>73</span>
+<span class='line-number'>74</span>
+<span class='line-number'>75</span>
+<span class='line-number'>76</span>
+<span class='line-number'>77</span>
+<span class='line-number'>78</span>
+<span class='line-number'>79</span>
+<span class='line-number'>80</span>
+<span class='line-number'>81</span>
+<span class='line-number'>82</span>
+<span class='line-number'>83</span>
+<span class='line-number'>84</span>
+</pre></td><td class='code'><pre><code class='cpp'><span class='line'><span class="cp">#include &lt;iostream&gt;</span>
+</span><span class='line'><span class="cp">#include &lt;string&gt;</span>
+</span><span class='line'><span class="cp">#include &lt;memory&gt;</span>
+</span><span class='line'><span class="cp">#include &lt;vector&gt;</span>
+</span><span class='line'>
+</span><span class='line'>
+</span><span class='line'><span class="cp">#define ASSERT_EQ(a,b) if((a) != (b)) \</span>
+</span><span class='line'><span class="cp">    { \</span>
+</span><span class='line'><span class="cp">        std::cout&lt;&lt;&quot;[     FAIL ] &quot;&lt;&lt;#a&lt;&lt;&quot; not equal &quot;&lt;&lt;#b&lt;&lt;std::endl; \</span>
+</span><span class='line'><span class="cp">        return; \</span>
+</span><span class='line'><span class="cp">    } else { \</span>
+</span><span class='line'><span class="cp">        std::cout&lt;&lt;&quot;[       OK ] &quot;&lt;&lt;std::endl; \</span>
+</span><span class='line'><span class="cp">    }</span>
+</span><span class='line'>
+</span><span class='line'><span class="cp">#define ASSERT_NE(a,b) if((a) == (b)) \</span>
+</span><span class='line'><span class="cp">    { \</span>
+</span><span class='line'><span class="cp">        std::cout&lt;&lt;&quot;[     FAIL ] &quot;&lt;&lt;#a&lt;&lt;&quot; not equal &quot;&lt;&lt;#b&lt;&lt;std::endl; \</span>
+</span><span class='line'><span class="cp">        return; \</span>
+</span><span class='line'><span class="cp">    } else { \</span>
+</span><span class='line'><span class="cp">        std::cout&lt;&lt;&quot;[       OK ] &quot;&lt;&lt;std::endl; \</span>
+</span><span class='line'><span class="cp">    }</span>
+</span><span class='line'>
+</span><span class='line'><span class="cp">#define EXPECT_EQ(a,b) if((a) != (b)) \</span>
+</span><span class='line'><span class="cp">    { \</span>
+</span><span class='line'><span class="cp">        std::cout&lt;&lt;&quot;[     FAIL ] &quot;&lt;&lt;#a&lt;&lt;&quot; not equal &quot;&lt;&lt;#b&lt;&lt;std::endl; \</span>
+</span><span class='line'><span class="cp">    } else { \</span>
+</span><span class='line'><span class="cp">        std::cout&lt;&lt;&quot;[       OK ] &quot;&lt;&lt;std::endl; \</span>
+</span><span class='line'><span class="cp">    }</span>
+</span><span class='line'>
+</span><span class='line'><span class="cp">#define EXPECT_NE(a,b) if((a) == (b)) \</span>
+</span><span class='line'><span class="cp">    { \</span>
+</span><span class='line'><span class="cp">        std::cout&lt;&lt;&quot;[     FAIL ] &quot;&lt;&lt;#a&lt;&lt;&quot; not equal &quot;&lt;&lt;#b&lt;&lt;std::endl; \</span>
+</span><span class='line'><span class="cp">    } else { \</span>
+</span><span class='line'><span class="cp">        std::cout&lt;&lt;&quot;[       OK ] &quot;&lt;&lt;std::endl; \</span>
+</span><span class='line'><span class="cp">    }</span>
+</span><span class='line'>
+</span><span class='line'><span class="cp">#define MAKE_CLASS_NAME(test_case_name, test_name)  MAKI_CLASS_NAME_I(test_case_name, test_name)</span>
+</span><span class='line'><span class="cp">#define MAKI_CLASS_NAME_I(test_case_name, test_name) XTest_##test_case_name##_##test_name##_Test</span>
+</span><span class='line'><span class="cp">#define XTEST_TEST(test_case_name,test_name) class MAKE_CLASS_NAME(test_case_name, test_name): \</span>
+</span><span class='line'><span class="cp">    public ::xtest::Test { \</span>
+</span><span class='line'><span class="cp">    public: \</span>
+</span><span class='line'><span class="cp">        MAKE_CLASS_NAME(test_case_name, test_name)(): ::xtest::Test(#test_case_name, #test_name) \</span>
+</span><span class='line'><span class="cp">        { \</span>
+</span><span class='line'><span class="cp">            ::xtest::UnitTest::regist(std::shared_ptr&lt;::xtest::Test&gt;(this)); \</span>
+</span><span class='line'><span class="cp">        } \</span>
+</span><span class='line'><span class="cp">        virtual void testBody(); \</span>
+</span><span class='line'><span class="cp">        static MAKE_CLASS_NAME(test_case_name, test_name) * instance; \</span>
+</span><span class='line'><span class="cp">}; \</span>
+</span><span class='line'><span class="cp">MAKE_CLASS_NAME(test_case_name, test_name) * MAKE_CLASS_NAME(test_case_name, test_name) ::instance \</span>
+</span><span class='line'><span class="cp">    = new MAKE_CLASS_NAME(test_case_name, test_name) ();\</span>
+</span><span class='line'><span class="cp">void MAKE_CLASS_NAME(test_case_name, test_name)::testBody()</span>
+</span><span class='line'>
+</span><span class='line'><span class="cp">#define TEST(test_case_name, test_name) XTEST_TEST(test_case_name, test_name)</span>
+</span><span class='line'>
+</span><span class='line'>
+</span><span class='line'><span class="k">namespace</span> <span class="n">xtest</span> <span class="p">{</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">class</span> <span class="nc">Test</span><span class="p">{</span>
+</span><span class='line'>        <span class="k">friend</span> <span class="k">class</span> <span class="nc">UnitTest</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">public</span><span class="o">:</span>
+</span><span class='line'>        <span class="n">Test</span><span class="p">(</span><span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="o">&amp;</span><span class="n">n1</span><span class="p">,</span> <span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&amp;</span> <span class="n">n2</span><span class="p">)</span><span class="o">:</span><span class="n">test_case_name</span><span class="p">(</span><span class="n">n1</span><span class="p">),</span> <span class="n">test_name</span><span class="p">(</span><span class="n">n2</span><span class="p">){</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'>        <span class="k">virtual</span> <span class="kt">void</span> <span class="n">testBody</span><span class="p">()</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>        <span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="n">test_case_name</span><span class="p">;</span>
+</span><span class='line'>        <span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="n">test_name</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">private</span><span class="o">:</span>
+</span><span class='line'>        <span class="n">Test</span><span class="p">(</span><span class="k">const</span> <span class="n">Test</span><span class="o">&amp;</span><span class="p">)</span> <span class="o">=</span> <span class="k">delete</span><span class="p">;</span>
+</span><span class='line'>        <span class="n">Test</span><span class="o">&amp;</span> <span class="k">operator</span><span class="o">=</span><span class="p">(</span><span class="k">const</span> <span class="n">Test</span><span class="o">&amp;</span><span class="p">)</span> <span class="o">=</span> <span class="k">delete</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">};</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">class</span> <span class="nc">UnitTest</span> <span class="p">{</span>
+</span><span class='line'>    <span class="k">public</span><span class="o">:</span>
+</span><span class='line'>        <span class="k">static</span> <span class="n">UnitTest</span><span class="o">*</span> <span class="n">getInstance</span><span class="p">();</span>
+</span><span class='line'>        <span class="kt">void</span> <span class="n">Run</span><span class="p">();</span>
+</span><span class='line'>        <span class="k">static</span> <span class="kt">void</span> <span class="n">regist</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Test</span><span class="o">&gt;</span> <span class="k">const</span><span class="o">&amp;</span> <span class="n">a</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">private</span><span class="o">:</span>
+</span><span class='line'>        <span class="k">static</span> <span class="n">UnitTest</span><span class="o">*</span> <span class="n">instance</span><span class="p">;</span>
+</span><span class='line'>        <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Test</span><span class="o">&gt;&gt;</span> <span class="n">all_tests12</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">};</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="kr">inline</span> <span class="kt">void</span> <span class="n">RUN_ALL_TESTS</span><span class="p">(){</span>
+</span><span class='line'>    <span class="n">xtest</span><span class="o">::</span><span class="n">UnitTest</span><span class="o">::</span><span class="n">getInstance</span><span class="p">()</span><span class="o">-&gt;</span><span class="n">Run</span><span class="p">();</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+
+
+<figure class='code'><figcaption><span>xtest.cpp</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+</pre></td><td class='code'><pre><code class='cpp'><span class='line'><span class="cp">#include &quot;xtest.h&quot;</span>
+</span><span class='line'><span class="k">namespace</span> <span class="n">xtest</span><span class="p">{</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">UnitTest</span><span class="o">*</span> <span class="n">UnitTest</span><span class="o">::</span><span class="n">instance</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+</span><span class='line'>    <span class="n">UnitTest</span><span class="o">*</span> <span class="n">UnitTest</span><span class="o">::</span><span class="n">getInstance</span><span class="p">(){</span>
+</span><span class='line'>        <span class="k">if</span><span class="p">(</span><span class="n">instance</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">){</span>
+</span><span class='line'>            <span class="n">instance</span> <span class="o">=</span> <span class="k">new</span> <span class="n">UnitTest</span><span class="p">();</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'>        <span class="k">return</span> <span class="n">instance</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>    <span class="kt">void</span> <span class="n">UnitTest</span><span class="o">::</span><span class="n">Run</span><span class="p">(){</span>
+</span><span class='line'>        <span class="n">std</span><span class="o">::</span><span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">&quot;[==========] Start XTest...&quot;</span><span class="o">&lt;&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">for</span><span class="p">(</span><span class="k">auto</span> <span class="n">i</span> <span class="o">=</span> <span class="n">begin</span><span class="p">(</span><span class="n">all_tests12</span><span class="p">);</span> <span class="n">i</span><span class="o">!=</span> <span class="n">end</span><span class="p">(</span><span class="n">all_tests12</span><span class="p">);</span> <span class="o">++</span><span class="n">i</span><span class="p">){</span>
+</span><span class='line'>            <span class="n">std</span><span class="o">::</span><span class="n">cout</span><span class="o">&lt;&lt;</span><span class="s">&quot;[ RUN      ] &quot;</span><span class="o">&lt;&lt;</span><span class="p">(</span><span class="o">*</span><span class="n">i</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">test_case_name</span><span class="o">&lt;&lt;</span><span class="s">&quot;.&quot;</span><span class="o">&lt;&lt;</span><span class="p">(</span><span class="o">*</span><span class="n">i</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">test_name</span><span class="o">&lt;&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+</span><span class='line'>            <span class="p">(</span><span class="o">*</span><span class="n">i</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">testBody</span><span class="p">();</span>
+</span><span class='line'>            <span class="n">std</span><span class="o">::</span><span class="n">cout</span><span class="o">&lt;&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>    <span class="kt">void</span> <span class="n">UnitTest</span><span class="o">::</span><span class="n">regist</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Test</span><span class="o">&gt;</span><span class="k">const</span><span class="o">&amp;</span> <span class="n">a</span><span class="p">){</span>
+</span><span class='line'>        <span class="n">getInstance</span><span class="p">()</span><span class="o">-&gt;</span><span class="n">all_tests12</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">a</span><span class="p">);</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+
+
+<figure class='code'><figcaption><span>main.cc</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+</pre></td><td class='code'><pre><code class='cpp'><span class='line'><span class="cp">#include &quot;xtest.h&quot;</span>
+</span><span class='line'>
+</span><span class='line'><span class="n">TEST</span><span class="p">(</span><span class="n">t1</span><span class="p">,</span><span class="n">t2</span><span class="p">){</span>
+</span><span class='line'>    <span class="n">ASSERT_EQ</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">ASSERT_EQ</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">ASSERT_EQ</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'><span class="n">TEST</span><span class="p">(</span><span class="n">t3</span><span class="p">,</span><span class="n">t4</span><span class="p">){</span>
+</span><span class='line'>    <span class="n">EXPECT_EQ</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">EXPECT_EQ</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">EXPECT_EQ</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'><span class="kt">int</span> <span class="n">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">*</span> <span class="n">argv</span><span class="p">[])</span> <span class="p">{</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">RUN_ALL_TESTS</span><span class="p">();</span>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+
+
+<figure class='code'><figcaption><span>结果</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+</pre></td><td class='code'><pre><code class='sh'><span class='line'><span class="o">[==========]</span> Start XTest...
+</span><span class='line'><span class="o">[</span> RUN      <span class="o">]</span> t1.t2
+</span><span class='line'><span class="o">[</span>       OK <span class="o">]</span>
+</span><span class='line'><span class="o">[</span>     FAIL <span class="o">]</span> 1 not equal 2
+</span><span class='line'>
+</span><span class='line'><span class="o">[</span> RUN      <span class="o">]</span> t3.t4
+</span><span class='line'><span class="o">[</span>       OK <span class="o">]</span>
+</span><span class='line'><span class="o">[</span>     FAIL <span class="o">]</span> 1 not equal 2
+</span><span class='line'><span class="o">[</span>     FAIL <span class="o">]</span> 2 not equal 3
+</span></code></pre></td></tr></table></div></figure>
+
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[C++ SFINAE]]></title>
+    <link href="http://10.1.45.58/blog/2014/06/05/c-plus-plus-sfinae/"/>
+    <updated>2014-06-05T20:30:00+08:00</updated>
+    <id>http://10.1.45.58/blog/2014/06/05/c-plus-plus-sfinae</id>
+    <content type="html"><![CDATA[<h3>1. 什么是SFINAE</h3>
+
+<p>在C++中有很多的编程技巧(Trick), <code>SFINAE</code>就是其中一种, 他的全义可以翻译为&#8221;匹配失败并不是一个错误(<em>Substitution failure is not an error</em>)&ldquo;. 简单来说他就是专门利用编译器匹配失败的一种技巧.</p>
+
+<h3>2. 案例</h3>
+
+<p>比如我们想实现一个通用的函数叫<code>AnyToString</code>, 他可以实现任意类型的数据转成字符串:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+</pre></td><td class='code'><pre><code class='cpp'><span class='line'><span class="k">template</span><span class="o">&lt;</span><span class="k">typename</span> <span class="n">ValueType</span><span class="o">&gt;</span>
+</span><span class='line'><span class="kt">char</span><span class="o">*</span> <span class="n">AnyToString</span><span class="p">(</span><span class="k">const</span> <span class="n">ValueType</span><span class="o">&amp;</span> <span class="n">value</span><span class="p">);</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>我们更希望这个函数能检查ValueType类型自己有没有<code>ToString</code>方法, 如果有就直接调用, 没有的话就采取通用的处理方案. 但是<code>C++</code>没有反射机制, 不能像C#那样通过<code>TypeInfo</code>来检查, 更没有像<code>Java</code>那样纯粹的OOP，从最基类就定义了<code>ToString</code>方法，下面的子类只用负责重载。</p>
+
+<p>所以我们希望能有一种方法能让<code>C++</code>也能检查某个类型是否定义了某个成员函数, 这就可以用到<code>SFINAE</code>.</p>
+
+<h3>3. 解决方案</h3>
+
+<p><code>C++</code>的模板匹配有个特点, 编译器始终会寻找类型匹配最精确的模板. 当然并不一定所有的模板都能匹配, 一旦有某个模板匹配不成功, 编译器会自动尝试别的候选模板, 要是所有的都不成功那编译器就匹配失败, 有的时候我们想故意跳过某些精确度高模板匹配, 而使用精确度低的模板, 这个时候就可以利用<code>SFINAE</code>故意让编译器匹配失败.
+回到案例, 我们希望检查一个类型是否有<code>ToString</code>方法, 例如:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+</pre></td><td class='code'><pre><code class='cpp'><span class='line'><span class="k">class</span> <span class="nc">A</span> <span class="p">{</span> <span class="kt">char</span><span class="o">*</span> <span class="n">ToString</span><span class="p">();</span> <span class="p">};</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">class</span> <span class="nc">B</span> <span class="p">{</span> <span class="p">};</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>这时我们在代码里面写<code>A::ToString</code>, 自然没有什么问题, 但是如果写<code>B::ToString</code>的话编译将告诉你找不到这个符号. 我们可以利用这个错误来跳过某些模板的匹配, 而使得别的模板可以得到匹配. 例如以下代码：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+</pre></td><td class='code'><pre><code class='cpp'><span class='line'><span class="k">template</span><span class="o">&lt;</span><span class="k">typename</span> <span class="n">ClassType</span><span class="o">&gt;</span>
+</span><span class='line'><span class="k">struct</span> <span class="n">HasToStringFunction</span> <span class="p">{</span>
+</span><span class='line'>    <span class="k">typedef</span> <span class="k">struct</span> <span class="p">{</span> <span class="kt">char</span><span class="p">[</span><span class="mi">2</span><span class="p">];</span> <span class="p">}</span> <span class="n">Yes</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">typedef</span> <span class="k">struct</span> <span class="p">{</span> <span class="kt">char</span><span class="p">[</span><span class="mi">1</span><span class="p">];</span> <span class="p">}</span> <span class="n">No</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">template</span><span class="o">&lt;</span><span class="k">typename</span> <span class="n">FooType</span><span class="p">,</span> <span class="kt">char</span><span class="o">*</span> <span class="p">(</span><span class="n">FooType</span><span class="o">::*</span><span class="p">)()</span><span class="o">&gt;</span>
+</span><span class='line'>    <span class="k">struct</span> <span class="n">FuncMatcher</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">template</span><span class="o">&lt;</span><span class="k">typename</span> <span class="n">FooType</span><span class="o">&gt;</span>
+</span><span class='line'>    <span class="k">static</span> <span class="n">Yes</span> <span class="n">Tester</span><span class="p">(</span><span class="n">FuncMatcher</span><span class="o">&lt;</span><span class="n">FooType</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">FooType</span><span class="o">::</span><span class="n">ToString</span><span class="o">&gt;*</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">template</span><span class="o">&lt;</span><span class="k">typename</span> <span class="n">FooType</span><span class="o">&gt;</span>
+</span><span class='line'>    <span class="k">static</span> <span class="n">No</span> <span class="n">Tester</span><span class="p">(...);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">enum</span> <span class="p">{</span>
+</span><span class='line'>        <span class="n">Result</span> <span class="o">=</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">Tester</span><span class="o">&lt;</span><span class="n">ClassType</span><span class="o">&gt;</span><span class="p">(</span><span class="nb">NULL</span><span class="p">))</span> <span class="o">==</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">Yes</span><span class="p">)</span>
+</span><span class='line'>    <span class="p">};</span>
+</span><span class='line'><span class="p">};</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">bool</span> <span class="n">a_has_tostring</span> <span class="o">=</span> <span class="n">HasToStringFunction</span><span class="o">&lt;</span><span class="n">A</span><span class="o">&gt;::</span><span class="n">Result</span><span class="p">;</span>   <span class="c1">// True</span>
+</span><span class='line'><span class="kt">bool</span> <span class="n">b_has_tostring</span> <span class="o">=</span> <span class="n">HasToStringFunction</span><span class="o">&lt;</span><span class="n">B</span><span class="o">&gt;::</span><span class="n">Result</span><span class="p">;</span>   <span class="c1">// False</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>这里有两个Tester方法, 第一个的匹配精度高于第二个的.</p>
+
+<p>当编译器解析<code>Tester&lt;ClassType&gt;(NULL)</code>的时候, 编译器首先会尝试用<code>ClassType</code>以及他的一个<code>ClassType::ToString</code>方法去实例化一个<code>FuncMatcher</code>类型来匹配第一个<code>Tester</code>函数. 对于A来说, 这是能通过的.</p>
+
+<p>但是对于B来说, 因为其没有<code>ToString</code>方法, 所以不能用B以及不存在的<code>B::ToString</code>来实例化<code>FuncMatcher</code>.</p>
+
+<p>这个时候编译器实际上就已经发现错误了, 但是根据SFINAE原则这个只能算是模板匹配失败, 不能算错误, 所以编译器会跳过这次对<code>FuncMatcher</code>的匹配. 但是跳过了以后也就没有别的匹配了, 所以整个第一个<code>Tester</code>来说对B都是不能匹配成功的, 这个时候优先级比较低的第二个<code>Tester</code>自然就能匹配上了. 我们就可以利用这一点来实现我们最开始的想要<code>AnyToString</code>方法:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+</pre></td><td class='code'><pre><code class='cpp'><span class='line'><span class="k">template</span><span class="o">&lt;</span><span class="kt">bool</span><span class="o">&gt;</span>
+</span><span class='line'><span class="k">struct</span> <span class="n">AnyToStringAdviser</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">template</span><span class="o">&lt;&gt;</span>
+</span><span class='line'><span class="k">struct</span> <span class="n">AnyToStringAdviser</span><span class="o">&lt;</span><span class="kc">true</span><span class="o">&gt;</span> <span class="p">{</span>
+</span><span class='line'>    <span class="k">template</span><span class="o">&lt;</span><span class="k">typename</span> <span class="n">ValueType</span><span class="o">&gt;</span>
+</span><span class='line'>    <span class="k">static</span> <span class="kt">char</span><span class="o">*</span> <span class="n">ToString</span><span class="p">(</span><span class="k">const</span> <span class="n">ValueType</span><span class="o">&amp;</span> <span class="n">value</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">return</span> <span class="n">value</span><span class="p">.</span><span class="n">ToString</span><span class="p">();</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">template</span><span class="o">&lt;&gt;</span>
+</span><span class='line'><span class="k">struct</span> <span class="n">AnyToStringAdviser</span><span class="o">&lt;</span><span class="kc">false</span><span class="o">&gt;</span> <span class="p">{</span>
+</span><span class='line'>    <span class="k">template</span><span class="o">&lt;</span><span class="k">typename</span> <span class="n">ValueType</span><span class="o">&gt;</span>
+</span><span class='line'>    <span class="k">static</span> <span class="kt">char</span><span class="o">*</span> <span class="n">ToString</span><span class="p">(</span><span class="k">const</span> <span class="n">ValueType</span><span class="o">&amp;</span> <span class="n">value</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="cm">/* Generic process */</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">template</span><span class="o">&lt;</span><span class="k">typename</span> <span class="n">ValueType</span><span class="o">&gt;</span>
+</span><span class='line'><span class="kt">char</span><span class="o">*</span> <span class="n">AnyToString</span><span class="p">(</span><span class="k">const</span> <span class="n">ValueType</span><span class="o">&amp;</span> <span class="n">value</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>    <span class="k">return</span> <span class="n">AnyToStringAdviser</span><span class="o">&lt;</span><span class="n">HasToStringFunction</span><span class="o">&lt;</span><span class="n">ValueType</span><span class="o">&gt;::</span><span class="n">Result</span> <span class="o">&gt;::</span><span class="n">ToString</span><span class="p">(</span><span class="n">value</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<h3>4. 再写一个常用的使用了该方法的traits工具类</h3>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+</pre></td><td class='code'><pre><code class='cpp'><span class='line'><span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">T</span><span class="o">&gt;</span>
+</span><span class='line'><span class="k">struct</span> <span class="n">is_class</span><span class="p">{</span>
+</span><span class='line'>    <span class="k">typedef</span> <span class="kt">char</span> <span class="n">__one__</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">typedef</span> <span class="k">struct</span><span class="p">{</span> <span class="kt">char</span><span class="p">[</span><span class="mi">2</span><span class="p">];</span> <span class="p">}</span> <span class="n">__two__</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">U</span><span class="o">&gt;</span>
+</span><span class='line'>    <span class="k">static</span> <span class="n">__one__</span> <span class="n">test</span><span class="p">(</span><span class="kt">int</span> <span class="n">U</span><span class="o">::*</span><span class="p">){</span> <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="n">U</span><span class="o">&gt;</span>
+</span><span class='line'>    <span class="k">static</span> <span class="n">__two__</span> <span class="n">test</span><span class="p">(...){</span> <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">const</span> <span class="k">static</span> <span class="kt">bool</span> <span class="n">value</span> <span class="o">=</span> <span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="n">test</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">(</span><span class="nb">NULL</span><span class="p">))</span> <span class="o">==</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">__one__</span><span class="p">));</span>
+</span><span class='line'><span class="p">};</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+
+]]></content>
+  </entry>
   
   <entry>
     <title type="html"><![CDATA[What – if anything – have we learned from C++?]]></title>

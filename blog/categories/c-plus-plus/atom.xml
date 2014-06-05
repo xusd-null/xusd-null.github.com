@@ -4,7 +4,7 @@
   <title><![CDATA[Category: c++ | 技术分享]]></title>
   <link href="http://10.1.45.58/blog/categories/c-plus-plus/atom.xml" rel="self"/>
   <link href="http://10.1.45.58/"/>
-  <updated>2014-06-05T20:55:50+08:00</updated>
+  <updated>2014-06-05T21:01:06+08:00</updated>
   <id>http://10.1.45.58/</id>
   <author>
     <name><![CDATA[]]></name>
@@ -12,6 +12,329 @@
   </author>
   <generator uri="http://octopress.org/">Octopress</generator>
 
+  
+  <entry>
+    <title type="html"><![CDATA[gtest源码剖析:1.实现一个超级简单的测试框架xtest]]></title>
+    <link href="http://10.1.45.58/blog/2014/06/05/gtestyuan-ma-pou-xi-1-dot-shi-xian-%5B%3F%5D-ge-chao-ji-jian-dan-de-ce-shi-kuang-jia/"/>
+    <updated>2014-06-05T20:46:00+08:00</updated>
+    <id>http://10.1.45.58/blog/2014/06/05/gtestyuan-ma-pou-xi-1-dot-shi-xian-[?]-ge-chao-ji-jian-dan-de-ce-shi-kuang-jia</id>
+    <content type="html"><![CDATA[<p>下面的代码模仿gtest实现，主要说明了以下两点:</p>
+
+<ol>
+<li><code>ASSERT_*</code> 和 <code>EXPECT_*</code>系列断言的原理和作用.</li>
+<li>gtest是怎样通过宏自动注册测试代码让其自动运行的.</li>
+</ol>
+
+
+<p>```cpp xtest.h</p>
+
+<h1>include <iostream></h1>
+
+<h1>include <string></h1>
+
+<h1>include <memory></h1>
+
+<h1>include <vector></h1>
+
+<h1>define ASSERT_EQ(a,b) if((a) != (b)) \</h1>
+
+<pre><code>{ \
+    std::cout&lt;&lt;"[     FAIL ] "&lt;&lt;#a&lt;&lt;" not equal "&lt;&lt;#b&lt;&lt;std::endl; \
+    return; \
+} else { \
+    std::cout&lt;&lt;"[       OK ] "&lt;&lt;std::endl; \
+}
+</code></pre>
+
+<h1>define ASSERT_NE(a,b) if((a) == (b)) \</h1>
+
+<pre><code>{ \
+    std::cout&lt;&lt;"[     FAIL ] "&lt;&lt;#a&lt;&lt;" not equal "&lt;&lt;#b&lt;&lt;std::endl; \
+    return; \
+} else { \
+    std::cout&lt;&lt;"[       OK ] "&lt;&lt;std::endl; \
+}
+</code></pre>
+
+<h1>define EXPECT_EQ(a,b) if((a) != (b)) \</h1>
+
+<pre><code>{ \
+    std::cout&lt;&lt;"[     FAIL ] "&lt;&lt;#a&lt;&lt;" not equal "&lt;&lt;#b&lt;&lt;std::endl; \
+} else { \
+    std::cout&lt;&lt;"[       OK ] "&lt;&lt;std::endl; \
+}
+</code></pre>
+
+<h1>define EXPECT_NE(a,b) if((a) == (b)) \</h1>
+
+<pre><code>{ \
+    std::cout&lt;&lt;"[     FAIL ] "&lt;&lt;#a&lt;&lt;" not equal "&lt;&lt;#b&lt;&lt;std::endl; \
+} else { \
+    std::cout&lt;&lt;"[       OK ] "&lt;&lt;std::endl; \
+}
+</code></pre>
+
+<h1>define MAKE_CLASS_NAME(test_case_name, test_name)  MAKI_CLASS_NAME_I(test_case_name, test_name)</h1>
+
+<h1>define MAKI_CLASS_NAME_I(test_case_name, test_name) XTest<em>##test_case_name##</em>##test_name##_Test</h1>
+
+<h1>define XTEST_TEST(test_case_name,test_name) class MAKE_CLASS_NAME(test_case_name, test_name): \</h1>
+
+<pre><code>public ::xtest::Test { \
+public: \
+    MAKE_CLASS_NAME(test_case_name, test_name)(): ::xtest::Test(#test_case_name, #test_name) \
+    { \
+        ::xtest::UnitTest::regist(std::shared_ptr&lt;::xtest::Test&gt;(this)); \
+    } \
+    virtual void testBody(); \
+    static MAKE_CLASS_NAME(test_case_name, test_name) * instance; \
+</code></pre>
+
+<p>}; \
+MAKE_CLASS_NAME(test_case_name, test_name) * MAKE_CLASS_NAME(test_case_name, test_name) ::instance \</p>
+
+<pre><code>= new MAKE_CLASS_NAME(test_case_name, test_name) ();\
+</code></pre>
+
+<p>void MAKE_CLASS_NAME(test_case_name, test_name)::testBody()</p>
+
+<h1>define TEST(test_case_name, test_name) XTEST_TEST(test_case_name, test_name)</h1>
+
+<p>namespace xtest {</p>
+
+<pre><code>class Test{
+    friend class UnitTest;
+public:
+    Test(const std::string &amp;n1, const std::string&amp; n2):test_case_name(n1), test_name(n2){
+    }
+    virtual void testBody() = 0;
+    std::string test_case_name;
+    std::string test_name;
+private:
+    Test(const Test&amp;) = delete;
+    Test&amp; operator=(const Test&amp;) = delete;
+};
+
+class UnitTest {
+public:
+    static UnitTest* getInstance();
+    void Run();
+    static void regist(std::shared_ptr&lt;Test&gt; const&amp; a);
+private:
+    static UnitTest* instance;
+    std::vector&lt;std::shared_ptr&lt;Test&gt;&gt; all_tests12;
+};
+</code></pre>
+
+<p>}</p>
+
+<p>inline void RUN_ALL_TESTS(){</p>
+
+<pre><code>xtest::UnitTest::getInstance()-&gt;Run();
+</code></pre>
+
+<p>}
+```</p>
+
+<p>```cpp xtest.cpp</p>
+
+<h1>include &ldquo;xtest.h&rdquo;</h1>
+
+<p>namespace xtest{</p>
+
+<pre><code>UnitTest* UnitTest::instance = NULL;
+UnitTest* UnitTest::getInstance(){
+    if(instance == NULL){
+        instance = new UnitTest();
+    }
+    return instance;
+}
+void UnitTest::Run(){
+    std::cout&lt;&lt;"[==========] Start XTest..."&lt;&lt;std::endl;
+    for(auto i = begin(all_tests12); i!= end(all_tests12); ++i){
+        std::cout&lt;&lt;"[ RUN      ] "&lt;&lt;(*i)-&gt;test_case_name&lt;&lt;"."&lt;&lt;(*i)-&gt;test_name&lt;&lt;std::endl;
+        (*i)-&gt;testBody();
+        std::cout&lt;&lt;std::endl;
+    }
+}
+void UnitTest::regist(std::shared_ptr&lt;Test&gt;const&amp; a){
+    getInstance()-&gt;all_tests12.push_back(a);
+}
+</code></pre>
+
+<p>}
+```</p>
+
+<p>```cpp main.cc</p>
+
+<h1>include &ldquo;xtest.h&rdquo;</h1>
+
+<p>TEST(t1,t2){</p>
+
+<pre><code>ASSERT_EQ(1,1);
+ASSERT_EQ(1,2);
+ASSERT_EQ(2,3);
+</code></pre>
+
+<p>}
+TEST(t3,t4){</p>
+
+<pre><code>EXPECT_EQ(1,1);
+EXPECT_EQ(1,2);
+EXPECT_EQ(2,3);
+</code></pre>
+
+<p>}
+int main(int argc, char* argv[]) {</p>
+
+<pre><code>RUN_ALL_TESTS();
+return 0;
+</code></pre>
+
+<p>}
+```</p>
+
+<p>```sh 结果
+[==========] Start XTest&hellip;
+[ RUN      ] t1.t2
+[       OK ]
+[     FAIL ] 1 not equal 2</p>
+
+<p>[ RUN      ] t3.t4
+[       OK ]
+[     FAIL ] 1 not equal 2
+[     FAIL ] 2 not equal 3</p>
+
+<p>```</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[C++ SFINAE]]></title>
+    <link href="http://10.1.45.58/blog/2014/06/05/c-plus-plus-sfinae/"/>
+    <updated>2014-06-05T20:30:00+08:00</updated>
+    <id>http://10.1.45.58/blog/2014/06/05/c-plus-plus-sfinae</id>
+    <content type="html"><![CDATA[<h3>1. 什么是SFINAE</h3>
+
+<p>在C++中有很多的编程技巧(Trick), <code>SFINAE</code>就是其中一种, 他的全义可以翻译为"匹配失败并不是一个错误(<em>Substitution failure is not an error</em>)&ldquo;. 简单来说他就是专门利用编译器匹配失败的一种技巧.</p>
+
+<h3>2. 案例</h3>
+
+<p>比如我们想实现一个通用的函数叫<code>AnyToString</code>, 他可以实现任意类型的数据转成字符串:</p>
+
+<p><code>cpp
+template&lt;typename ValueType&gt;
+char* AnyToString(const ValueType&amp; value);
+</code></p>
+
+<p>我们更希望这个函数能检查ValueType类型自己有没有<code>ToString</code>方法, 如果有就直接调用, 没有的话就采取通用的处理方案. 但是<code>C++</code>没有反射机制, 不能像C#那样通过<code>TypeInfo</code>来检查, 更没有像<code>Java</code>那样纯粹的OOP，从最基类就定义了<code>ToString</code>方法，下面的子类只用负责重载。</p>
+
+<p>所以我们希望能有一种方法能让<code>C++</code>也能检查某个类型是否定义了某个成员函数, 这就可以用到<code>SFINAE</code>.</p>
+
+<h3>3. 解决方案</h3>
+
+<p><code>C++</code>的模板匹配有个特点, 编译器始终会寻找类型匹配最精确的模板. 当然并不一定所有的模板都能匹配, 一旦有某个模板匹配不成功, 编译器会自动尝试别的候选模板, 要是所有的都不成功那编译器就匹配失败, 有的时候我们想故意跳过某些精确度高模板匹配, 而使用精确度低的模板, 这个时候就可以利用<code>SFINAE</code>故意让编译器匹配失败.
+回到案例, 我们希望检查一个类型是否有<code>ToString</code>方法, 例如:</p>
+
+<p>```cpp
+class A { char* ToString(); };</p>
+
+<p>class B { };
+```</p>
+
+<p>这时我们在代码里面写<code>A::ToString</code>, 自然没有什么问题, 但是如果写<code>B::ToString</code>的话编译将告诉你找不到这个符号. 我们可以利用这个错误来跳过某些模板的匹配, 而使得别的模板可以得到匹配. 例如以下代码：</p>
+
+<p>```cpp
+template<typename ClassType>
+struct HasToStringFunction {</p>
+
+<pre><code>typedef struct { char[2]; } Yes;
+typedef struct { char[1]; } No;
+
+template&lt;typename FooType, char* (FooType::*)()&gt;
+struct FuncMatcher;
+
+template&lt;typename FooType&gt;
+static Yes Tester(FuncMatcher&lt;FooType, &amp;FooType::ToString&gt;*);
+
+template&lt;typename FooType&gt;
+static No Tester(...);
+
+enum {
+    Result = sizeof(Tester&lt;ClassType&gt;(NULL)) == sizeof(Yes)
+};
+</code></pre>
+
+<p>};</p>
+
+<p>bool a_has_tostring = HasToStringFunction<A>::Result;   // True
+bool b_has_tostring = HasToStringFunction<B>::Result;   // False
+```
+这里有两个Tester方法, 第一个的匹配精度高于第二个的.</p>
+
+<p>当编译器解析<code>Tester&lt;ClassType&gt;(NULL)</code>的时候, 编译器首先会尝试用<code>ClassType</code>以及他的一个<code>ClassType::ToString</code>方法去实例化一个<code>FuncMatcher</code>类型来匹配第一个<code>Tester</code>函数. 对于A来说, 这是能通过的.</p>
+
+<p>但是对于B来说, 因为其没有<code>ToString</code>方法, 所以不能用B以及不存在的<code>B::ToString</code>来实例化<code>FuncMatcher</code>.</p>
+
+<p>这个时候编译器实际上就已经发现错误了, 但是根据SFINAE原则这个只能算是模板匹配失败, 不能算错误, 所以编译器会跳过这次对<code>FuncMatcher</code>的匹配. 但是跳过了以后也就没有别的匹配了, 所以整个第一个<code>Tester</code>来说对B都是不能匹配成功的, 这个时候优先级比较低的第二个<code>Tester</code>自然就能匹配上了. 我们就可以利用这一点来实现我们最开始的想要<code>AnyToString</code>方法:</p>
+
+<p>```cpp
+template<bool>
+struct AnyToStringAdviser;</p>
+
+<p>template&lt;>
+struct AnyToStringAdviser<true> {</p>
+
+<pre><code>template&lt;typename ValueType&gt;
+static char* ToString(const ValueType&amp; value) {
+    return value.ToString();
+}
+</code></pre>
+
+<p>}</p>
+
+<p>template&lt;>
+struct AnyToStringAdviser<false> {</p>
+
+<pre><code>template&lt;typename ValueType&gt;
+static char* ToString(const ValueType&amp; value) {
+    /* Generic process */
+}
+</code></pre>
+
+<p>}</p>
+
+<p>template<typename ValueType>
+char* AnyToString(const ValueType&amp; value) {</p>
+
+<pre><code>return AnyToStringAdviser&lt;HasToStringFunction&lt;ValueType&gt;::Result &gt;::ToString(value);
+</code></pre>
+
+<p>}
+```</p>
+
+<h3>4. 再写一个常用的使用了该方法的traits工具类</h3>
+
+<p>```
+template <typename T>
+struct is_class{</p>
+
+<pre><code>typedef char __one__;
+typedef struct{ char[2]; } __two__;
+
+template &lt;typename U&gt;
+static __one__ test(int U::*){ }
+
+template &lt;typename U&gt;
+static __two__ test(...){ }
+
+const static bool value = (sizeof(test&lt;T&gt;(NULL)) == sizeof(__one__));
+</code></pre>
+
+<p>};
+```</p>
+]]></content>
+  </entry>
   
   <entry>
     <title type="html"><![CDATA[What – if anything – have we learned from C++?]]></title>
