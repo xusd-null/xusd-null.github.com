@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
 
-  <title><![CDATA[技术分享]]></title>
-  <link href="http://10.1.45.58/atom.xml" rel="self"/>
+  <title><![CDATA[Category: c++ | 技术分享]]></title>
+  <link href="http://10.1.45.58/blog/categories/c-plus-plus/atom.xml" rel="self"/>
   <link href="http://10.1.45.58/"/>
   <updated>2014-06-05T20:55:50+08:00</updated>
   <id>http://10.1.45.58/</id>
