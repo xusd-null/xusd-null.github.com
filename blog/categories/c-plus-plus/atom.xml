@@ -4,7 +4,7 @@
   <title><![CDATA[Category: c++ | 技术分享]]></title>
   <link href="http://10.1.45.58/blog/categories/c-plus-plus/atom.xml" rel="self"/>
   <link href="http://10.1.45.58/"/>
-  <updated>2014-06-05T21:01:06+08:00</updated>
+  <updated>2014-06-06T14:40:46+08:00</updated>
   <id>http://10.1.45.58/</id>
   <author>
     <name><![CDATA[]]></name>
@@ -12,6 +12,99 @@
   </author>
   <generator uri="http://octopress.org/">Octopress</generator>
 
+  
+  <entry>
+    <title type="html"><![CDATA[C++ operator bool()]]></title>
+    <link href="http://10.1.45.58/blog/2014/06/06/c-plus-plus-operator-bool/"/>
+    <updated>2014-06-06T14:33:00+08:00</updated>
+    <id>http://10.1.45.58/blog/2014/06/06/c-plus-plus-operator-bool</id>
+    <content type="html"><![CDATA[<p>这两天群里在讨论智能指针啦，而且还有侵入式的实现代码。还讨论到了转化为bool的问题。</p>
+
+<p>看到这个问题我就想写篇博文记录一下刚学的知识.</p>
+
+<p>看一下经典侵入式智能指针的代码(c++11之前的代码),发现它们都会有这样的一个实现:</p>
+
+<p><code>cpp
+// This conversion operator allows implicit conversion to bool but not to other integer types.
+typedef T* (PassRefPtr::*UnspecifiedBoolType);
+operator UnspecifiedBoolType() const { return m_ptr ? &amp;PassRefPtr::m_ptr : 0; }
+</code></p>
+
+<p>这段代码的直接意思是定义一个转型操作, 该操作是把当前的<code>PassRefPtr</code>对象转型为PassRefPtr的成员指针! 这是为了什么呢？</p>
+
+<p>看这段代码的注释说明: 本类型转换操作允许隐式的转化为bool, 单不能转换为其他的整型类型.</p>
+
+<p>终于明白了, 他是想让这样的表达式成立:
+```
+PassRefPtr p;</p>
+
+<p>if(p){</p>
+
+<pre><code>...
+</code></pre>
+
+<p>}</p>
+
+<p>p &amp;&amp; other_expression
+```</p>
+
+<p>而这样的就不成立:</p>
+
+<p>```
+PassRefPtr p;</p>
+
+<p>p++;</p>
+
+<p>p+1;
+```</p>
+
+<p>我们再来看C++标准中对成员指针的一些描述：</p>
+
+<ul>
+<li>A pointer to member cannot be converted to a void<em>  //不能转换为void</em>类型</li>
+<li>An rvalue of pointer to member type can be converted to an rvalue of type bool //可以转型为bool型(其他整形类型是不能转换的)</li>
+</ul>
+
+
+<p>不能转化为void*, 我们也就不能写这样的代码了:
+```cpp
+PassRefPtr p;</p>
+
+<p>delete p;</p>
+
+<p>U<em> x = static_cast&lt;U</em>>(p); //void* 可以通过static_cast转换成其他的类型指针.
+```</p>
+
+<p>这个操作符重载说明了可以自动转换为UnspecifiedBoolType,而UnspecifiedBoolType类型可以转换为bool型.</p>
+
+<p>原来UnspecifiedBoolType operator()是为了让我们对该"指针"进行判空用的.</p>
+
+<p>下面再来讨论两个问题:</p>
+
+<p>1.可不可以提供一个bool操作符让它直接转换为bool型, operator bool()?
+2.可不可以让它可以直接转换为T*类型 , operator T*()?</p>
+
+<p>以上问题都是值得我们去研究的，只有明白了以上两个问题，为什么不可以之后，才会真正明白为什么要用今天讨论的那个UnspecifiedBoolType操作符。</p>
+
+<p>这里只是简单说一下我的理解, 要彻底说明白这些东西以我目前的能力估计需要长篇大论了.</p>
+
+<ol>
+<li>为什么不直接使用<code>operator bool()</code>, 因为bool型可以自动转换为其它的整数类型(类型提升?), 这样你就可以对该指针做数学运算了.</li>
+<li>为什么不直接使用T* operator(); 这样就直接把资源给暴露出来了, 例如可以直接delete它.</li>
+</ol>
+
+
+<p>c++11来了, 看，世界变得好清净了.
+```cpp
+explicit operator bool(){</p>
+
+<pre><code>return m_ptr;
+</code></pre>
+
+<p>}
+```</p>
+]]></content>
+  </entry>
   
   <entry>
     <title type="html"><![CDATA[gtest源码剖析:1.实现一个超级简单的测试框架xtest]]></title>
